@@ -5,7 +5,8 @@
   "main": "index.html",
   "scripts": {
     "start": "parcel index.html --open",
-    "build": "parcel build index.html"
+    "build": "parcel build index.html",
+    "now-build": "yarn build"
   },
   "dependencies": {
     "effector": "0.18.0-rc.1"
