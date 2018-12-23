@@ -2,105 +2,127 @@
 
 import toposort from '../toposort';
 
+function idGenerator(fn) {
+  let id = 0;
+  return () => fn(++id);
+}
+
 describe('foo', () => {
-  class Ref {
-    constructor(__) {
-      this.__ = __;
-    }
-  }
-  const Input = new Ref(0);
-  const A = new Ref(0);
-  const B = new Ref(1);
-  const C = new Ref(2);
-  const D = new Ref(10);
-  const E = new Ref(11);
-  const F = new Ref({l: 2, r: 11});
-  const refs = {Input, A, B, C, D, E, F};
-  const deps = {
-    Input: ['A'],
-    A: ['B'],
-    B: ['C', 'D'],
-    C: ['F'],
-    D: ['E'],
-    E: ['F'],
-    F: ['Output'],
-    Output: [],
-  };
+  const nextEdgeID = idGenerator(n => '$' + n.toString(36));
+  const nextNodeID = idGenerator(n => (n + 9).toString(36).toUpperCase());
 
-  const edges = {
-    a: new Ref(['Input', 'A']),
-    b: new Ref(['A', 'B']),
-    c: new Ref(['B', 'C']),
-    d: new Ref(['B', 'D']),
-    e: new Ref(['D', 'E']),
-    f: new Ref(['C', 'F']),
-    g: new Ref(['E', 'F']),
-    h: new Ref(['F', 'Output']),
-  };
-  const edgesRef = {
-    a: [],
-    b: ['a'],
-    c: ['b'],
-    d: ['b'],
-    e: ['d'],
-    f: ['c'],
-    g: ['e'],
-    h: ['f', 'g'],
-  };
-  const edgesRefRev = {
-    a: ['b'],
-    b: ['c', 'd'],
-    c: ['f'],
-    d: ['e'],
-    e: ['g'],
-    f: ['h'],
-    g: ['h'],
-    h: [],
-  };
-  const fns = {
-    a: () => 1,
-    b: n => n + 1,
-    c: n => n + 1,
-    d: n => n * 10,
-    e: n => n + 1,
-    f: l => l,
-    g: r => r,
-    h: (l, r) => ({l, r}),
-  };
-  const seq = [];
-  const storages = {};
-  const execs = {};
-  const topo = toposort(edgesRefRev);
-  for (const edge of topo) {
-    storages[edge] = {edge, current: -1, deps: {}};
-    for (const dep of edgesRef[edge]) {
-      storages[edge].deps[dep] = storages[dep];
-    }
-    execs[edge] = () => {
-      const deps = [];
-      for (const depKey in storages[edge].deps) {
-        deps.push(storages[edge].deps[depKey].current);
-      }
-      const result = fns[edge](...deps);
-      storages[edge].current = result;
+  it('works with single context and model', () => {
+    const model = {
+      nodes: {
+        list: ['Input', 'Output', 'A', 'B', 'C', 'D', 'E', 'F', 'G'],
+        refTo: {
+          Input: ['A'],
+          Output: [],
+          A: ['B', 'C'],
+          B: ['F'],
+          C: ['D'],
+          D: ['E'],
+          E: ['G'],
+          F: ['G'],
+          G: ['Output'],
+        },
+        refBy: {
+          Input: [],
+          Output: ['G'],
+          A: ['Input'],
+          B: ['A'],
+          C: ['A'],
+          D: ['C'],
+          E: ['D'],
+          F: ['B'],
+          G: ['E', 'F'],
+        },
+      },
+      edges: {
+        list: ['$1', '$2', '$3', '$4', '$5', '$6', '$7', '$8', '$9', '$10'],
+        refTo: {
+          $1: ['$2', '$5'],
+          $2: ['$3'],
+          $3: ['$4'],
+          $4: ['$9'],
+          $5: ['$6'],
+          $6: ['$7'],
+          $7: ['$8'],
+          $8: ['$9'],
+          $9: ['$a'],
+          $a: [],
+        },
+        refBy: {
+          $1: [],
+          $2: ['$1'],
+          $3: ['$2'],
+          $4: ['$3'],
+          $5: ['$1'],
+          $6: ['$5'],
+          $7: ['$6'],
+          $8: ['$7'],
+          $9: ['$4', '$8'],
+          $a: ['$9'],
+        },
+      },
     };
-    seq.push(execs[edge]);
-  }
-  const doSeq = () => {
-    seq.forEach(f => f());
-    return storages.h.current;
-  };
-  // console.log(storages)
-  console.log(doSeq());
-  fns.a = () => 2;
-  console.log(doSeq());
-  // console.log(storages)
+    const ctx = {
+      ports: {
+        input: 0,
+        output: {l: -1, r: -1},
+      },
+      values: {
+        A: -1,
+        B: -1,
+        C: -1,
+        D: -1,
+        E: -1,
+        F: -1,
+        G: {l: -1, r: -1},
+      },
+      edges: {
+        $1: _ => ctx.ports.input,
+        $2: n => n + 1,
+        $3: n => n + 1,
+        $4: n => n,
+        $5: n => n * 10,
+        $6: n => n + 1,
+        $7: n => n + 1,
+        $8: n => n,
+        $9: (l, r) => ({l, r}),
+        $a: x => {
+          ctx.ports.output = x;
+        },
+      },
+      storages: {},
+      seq: [],
+    };
+    const sortedNodes = toposort(model.edges.refTo);
+    console.log('sortedNodes', sortedNodes);
 
-  console.log(toposort(edgesRef));
-  console.log(topo);
-  console.log(toposort(deps));
-  it('works', () => {
-    console.log('okk');
+    for (const edge of sortedNodes) {
+      ctx.storages[edge] = {edge, current: -1, deps: {}};
+      for (const dep of model.edges.refBy[edge]) {
+        ctx.storages[edge].deps[dep] = ctx.storages[dep];
+      }
+      ctx.seq.push(iter.bind(edge));
+    }
+
+    console.log(doSeq(1, ctx));
+    console.log(doSeq(2, ctx));
+
+    function doSeq(input, ctx) {
+      ctx.ports.input = input;
+      ctx.seq.forEach(f => f(ctx));
+      return ctx.ports.output;
+    }
+    function iter(ctx) {
+      const deps = [];
+      for (const depKey in ctx.storages[this].deps) {
+        deps.push(ctx.storages[this].deps[depKey].current);
+      }
+      const result = ctx.edges[this](...deps);
+      ctx.storages[this].current = result;
+    }
   });
-  //   throw new Error('[expect error]');
 });
